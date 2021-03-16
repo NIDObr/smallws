@@ -32,7 +32,7 @@ set _port "6921"
 proc InitServer { port } {
 	# Cria o canal de rede na porta especificada e chama a função InirCfg
 	set ::_wssock [ socket -server InitCfg $port ]
-	puts "[ clock format [ clock seconds ] -format {%b %d %H:%M:%S} ] - Servidor iniciado."
+	puts "[ clock format [ clock seconds ] -format {%b %d %H:%M:%S} ] - Servidor iniciado.\n"
 	# Mantem o programa rodando em loop
 	vwait forever
 }
@@ -48,32 +48,34 @@ proc cfgWebSW { _sockid _ipremot } {
 	if { [ fblocked $_sockid ] } then { return }
 	fileevent $_sockid readable [ list WebSW $_sockid ]
 }
-# Informações sobre o browser
-proc Header { _sockid } {
-	puts $_sockid "HTTP/1.1 200 OK"
-	puts $_sockid ""
-	set _header [ read $_sockid ]
-	puts "$_header"
-}
 # Trasfere as paginas ao browser
 proc WebSW { _sockid } {
 	set _sockline [ gets $_sockid ]
-	# Le as requisiçoes do browser
-	if { $_sockline != " " } {
-		Header $_sockid
-	}
 	set _sockline [ regsub "GET " $_sockline "" ]
  	set _sockline [ regsub " HTTP/1.1" $_sockline "" ]
-	# Se não for solicitada uma pagina edpecifica, exibe a pagina padrão 
-	if { [ eval string index $_sockline 1 ] == "" } {
-		set _pfile [ open "$::_root$::_index" r ]
+	# Se não for solicitada uma pagina especifica, exibe a pagina padrão 
+	if { [ eval file exist "$::_root$_sockline" ] == 0 } {
+		puts $_sockid "HTTP/1.0 404 Not found"
+		puts $_sockid ""
+		puts $_sockid "<html><head><title>404 Not found</title></head>"
+		puts $_sockid "<body><center>"
+		puts $_sockid "<h1>Not Found.</h1><h2>The url was not found on the server, returning error 404</h2>"
+		puts $_sockid "</center></body></html>"
+		close $_sockid
 	} else {
-		set _pfile [ eval open $::_root$_sockline r ]
+		if { [ eval string index $_sockline 1 ] == "" } {
+			set _pfile [ open "$::_root$::_index" r ]
+		} else {
+			set _pfile [ eval open $::_root$_sockline r ]
+		}
+		puts $_sockid "HTTP/1.1 200 OK"
+		puts $_sockid ""
+		set _header [ read $_sockid ]
+		puts "$_header"
+		fconfigure $_pfile -translation binary
+		# Transfere os dados ao browser
+		fileevent $_sockid readable [ fcopy $_pfile $_sockid -command [ list done $_pfile $_sockid ] ]
 	}
-	fconfigure $_pfile -translation binary
-	# Transfere os dados ao browser
-	fileevent $_sockid readable [ fcopy $_pfile $_sockid -command [ list done $_pfile $_sockid ] ]
-
 }
 # Fecha os canais referente ao socket e ao arquivo enviado ao browser
 proc done { _pfile _sockid _transferbit } {
